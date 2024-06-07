@@ -1,13 +1,26 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddEventPublisher();
+builder.Services.AddDomainEventHandler<ProductCreated, ProductCreatedHandler>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.MapGet("/products", () => new[]
+{
+    new Product(1, "Keyboard", 20),
+    new Product(2, "Mouse", 10),
+    new Product(3, "Monitor", 200)
+});
+
+app.MapPost("/products", async (Product product, IEventPublisher publisher) =>
+{
+    // Save the product
+    await publisher.PublishAsync(new ProductCreated(product.Id, product.Name, product.Price));
+    return product;
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -16,29 +29,17 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
-
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+public record Product(int Id, string Name, decimal Price);
+
+public record ProductCreated(int Id, string Name, decimal Price) : IDomainEvent;
+
+public class ProductCreatedHandler : IDomainEventHandler<ProductCreated>
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public Task HandleAsync(ProductCreated domainEvent, CancellationToken cancellationToken = default)
+    {
+        Console.WriteLine($"Product created: {domainEvent.Name}");
+        return Task.CompletedTask;
+    }
 }
